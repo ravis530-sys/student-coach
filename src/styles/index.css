@@ -697,12 +697,67 @@ img { max-width: 100%; display: block; }
   border-radius: var(--radius-md);
   background: rgba(16, 185, 129, 0.08);
   border: 1px solid rgba(16, 185, 129, 0.25);
-  margin-top: 12px;
+  margin-top: 8px;
+  transition: all var(--transition);
 }
 
-.uploaded-file-card .file-icon { font-size: 1.5rem; }
+.uploaded-file-card:hover {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.uploaded-file-card .file-icon { font-size: 1.5rem; flex-shrink: 0; }
+.uploaded-file-card .file-info { flex: 1; min-width: 0; }
 .uploaded-file-card .file-info .filename { font-size: 0.88rem; font-weight: 600; }
-.uploaded-file-card .file-info .filemeta { font-size: 0.75rem; color: var(--text-muted); }
+.uploaded-file-card .file-info .filemeta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+.uploaded-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.uploaded-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.upload-add-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.upload-mini-drop {
+  flex: 1;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.upload-mini-drop:hover, .upload-mini-drop.drag-over {
+  border-color: var(--primary);
+  color: var(--primary-light);
+  background: rgba(124, 58, 237, 0.08);
+}
 
 /* ============================================================
    CHAT INTERFACE

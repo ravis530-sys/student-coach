@@ -1,6 +1,19 @@
 // File parser service — handles PDF, DOCX, images, and URLs
 // Uses pdf.js for PDFs and mammoth for DOCX
 
+// Polyfill Math.sumPrecise for PDF.js compatibility across all browsers
+if (typeof Math.sumPrecise !== 'function') {
+  Math.sumPrecise = function (numbers) {
+    let sum = 0;
+    if (numbers && typeof numbers[Symbol.iterator] === 'function') {
+      for (const n of numbers) {
+        sum += Number(n) || 0;
+      }
+    }
+    return sum;
+  };
+}
+
 /**
  * Extract text from a PDF file using PDF.js
  */

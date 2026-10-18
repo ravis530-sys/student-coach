@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send, Mic, MicOff, Volume2, VolumeX, RefreshCw } from 'lucide-react';
@@ -56,7 +56,7 @@ function TypingIndicator() {
 export default function TutorChat({ mode }) {
   const {
     apiKey, messages, addMessage, clearMessages,
-    uploadedContent, explanationLanguage, voiceEnabled,
+    uploadedFiles, uploadedContent, explanationLanguage, voiceEnabled,
     name, role, age, studentClass, board, teacherSubjects,
   } = useAppStore();
 
@@ -67,7 +67,9 @@ export default function TutorChat({ mode }) {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
-  const profile = { role, name, age, studentClass, board, teacherSubjects, mode, explanationLanguage };
+  const profile = useMemo(() => ({
+    role, name, age, studentClass, board, teacherSubjects, mode, explanationLanguage
+  }), [role, name, age, studentClass, board, teacherSubjects, mode, explanationLanguage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -76,25 +78,29 @@ export default function TutorChat({ mode }) {
   // Send welcome message on mount
   useEffect(() => {
     if (messages.length === 0) {
+      const materialLabel = uploadedFiles?.length > 1
+        ? `${uploadedFiles.length} materials (${uploadedFiles.map(f => f.filename).join(', ')})`
+        : uploadedContent?.filename || 'your material';
+
       const welcomes = {
         learn: uploadedContent
-          ? `Hi ${name}! 👋 I've loaded your material **"${uploadedContent.filename}"**. What chapter or topic would you like to start with? I'll explain it in a simple, fun way! 🚀`
-          : `Hi ${name}! 👋 Ready to learn something amazing today? You can upload a PDF, Word doc, or image — or just tell me what topic you'd like to study! 📚`,
+          ? `Hi ${name}! 👋 I've loaded your material **"${materialLabel}"**. What chapter or topic would you like to start with? I'll explain it in a simple, fun way! 🚀`
+          : `Hi ${name}! 👋 Ready to learn something amazing today? You can upload PDFs, Word docs, images, or web links — or just tell me what topic you'd like to study! 📚`,
         qna: uploadedContent
-          ? `Hi ${name}! 📖 I've read your material. Go ahead — ask me anything from **"${uploadedContent.filename}"**!`
+          ? `Hi ${name}! 📖 I've read your study materials: **"${materialLabel}"**. Go ahead — ask me anything from them!`
           : `Hi ${name}! ❓ Ask me any question about your studies and I'll answer it clearly with examples!`,
         exam_prep: `Hi ${name}! 🎯 Let's prepare you for your board exams! Tell me which subject or topic you want to focus on, and I'll cover the most important points with exam tips! 💪`,
         quiz: uploadedContent
-          ? `Hi ${name}! 🧠 Ready to test your knowledge on **"${uploadedContent.filename}"**? Type **"start quiz"** and I'll generate questions for you!`
+          ? `Hi ${name}! 🧠 Ready to test your knowledge on **"${materialLabel}"**? Type **"start quiz"** and I'll generate questions for you!`
           : `Hi ${name}! 🧠 Ready for a quiz? Tell me what subject or topic to quiz you on, and we'll begin!`,
-        exam_generate: `Hello! 📝 Upload the chapters you want to include, then tell me the exam configuration (number of questions, marks, difficulty) and I'll generate a complete model paper!`,
+        exam_generate: `Hello! 📝 Upload the chapters or notes you want to include, then configure the exam parameters to generate a complete model paper!`,
       };
 
       const welcome = welcomes[mode] || `Hello ${name}! How can I help you today?`;
       addMessage({ role: 'model', content: welcome, timestamp: Date.now(), id: 'welcome' });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [messages.length]);
 
   const handleSend = useCallback(async (text) => {
     const userText = (text || input).trim();
@@ -112,7 +118,7 @@ export default function TutorChat({ mode }) {
     try {
       const response = await sendMessage({
         apiKey,
-        messages: [...messages, userMsg],
+        messages,
         newMessage: userText,
         context: uploadedContent?.text,
         profile,
@@ -205,11 +211,19 @@ export default function TutorChat({ mode }) {
         flexWrap: 'wrap',
       }}>
         <span className="badge badge-primary">{modeLabels[mode]}</span>
-        {uploadedContent && (
-          <span className="badge badge-emerald" style={{ maxWidth: '200px' }}>
+        {uploadedFiles?.length > 1 ? (
+          <span
+            className="badge badge-emerald"
+            style={{ maxWidth: '240px' }}
+            title={uploadedFiles.map(f => f.filename).join(', ')}
+          >
+            <span className="truncate">📚 {uploadedFiles.length} files attached</span>
+          </span>
+        ) : uploadedContent ? (
+          <span className="badge badge-emerald" style={{ maxWidth: '220px' }}>
             <span className="truncate">📄 {uploadedContent.filename}</span>
           </span>
-        )}
+        ) : null}
         <span className="badge badge-cyan">{explanationLanguage}</span>
         <div style={{ flex: 1 }} />
         <button

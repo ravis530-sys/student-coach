@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+const GEMINI_MODEL = 'gemini-3.8-flash';
+
 let genAI = null;
 
 function getClient(apiKey) {
@@ -10,23 +12,23 @@ function getClient(apiKey) {
   return genAI;
 }
 
-function buildSystemPrompt({ role, name, age, studentClass, board, mode, explanationLanguage, teacherSubjects }) {
+function buildSystemPrompt({ role, name, age, studentClass, board, mode, explanationLanguage, teacherSubjects }, context) {
+  let prompt = '';
   if (role === 'teacher') {
     const subjectList = teacherSubjects?.length ? teacherSubjects.join(', ') : 'All Subjects';
-    return `You are an expert AI assistant helping a teacher prepare educational content for subjects: ${subjectList}.
+    prompt = `You are an expert AI assistant helping a teacher prepare educational content for subjects: ${subjectList}.
 You help generate model question papers, exam questions, and structured content.
 Format papers clearly with sections (MCQ, Short Answer, Long Answer) with marks.
 Use clear, professional language. When asked for a paper, provide complete, well-structured output.`;
-  }
+  } else {
+    // Student mode
+    const lang = explanationLanguage || 'English';
+    const cls = studentClass || 'school';
+    const ageStr = age ? `${age} years old` : '';
+    const boardStr = board ? `studying under ${board} board` : '';
 
-  // Student mode
-  const lang = explanationLanguage || 'English';
-  const cls = studentClass || 'school';
-  const ageStr = age ? `${age} years old` : '';
-  const boardStr = board ? `studying under ${board} board` : '';
-
-  const complexityGuide = {
-    learn: `You are a warm, enthusiastic tutor named "Coach" for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}${boardStr ? `, ${boardStr}` : ''}.
+    const complexityGuide = {
+      learn: `You are a warm, enthusiastic tutor named "Coach" for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}${boardStr ? `, ${boardStr}` : ''}.
 - Explain concepts in SIMPLE, easy-to-understand language suitable for their age.
 - Always use real-life examples and relatable analogies.
 - Use emojis to make content fun and engaging 🎉.
@@ -35,64 +37,101 @@ Use clear, professional language. When asked for a paper, provide complete, well
 - Respond ONLY in ${lang} language for explanations (subject content terms can remain in English if needed).
 - If the student says they don't understand, explain using a COMPLETELY DIFFERENT analogy or example.`,
 
-    qna: `You are a patient Q&A tutor for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}${boardStr ? `, ${boardStr}` : ''}.
+      qna: `You are a patient Q&A tutor for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}${boardStr ? `, ${boardStr}` : ''}.
 - Answer questions clearly and simply based on the context provided.
 - After answering, ask if they need more clarification.
 - If they don't understand, re-explain with fresh, different examples.
 - Keep answers age-appropriate and encouraging.
 - Respond ONLY in ${lang} language for explanations.`,
 
-    exam_prep: `You are a focused Board Exam preparation coach for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}${boardStr ? `, ${boardStr}` : ''}.
+      exam_prep: `You are a focused Board Exam preparation coach for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}${boardStr ? `, ${boardStr}` : ''}.
 - Focus on important topics, key definitions, and exam-relevant content.
 - Share tips on how to write answers for maximum marks.
 - Highlight frequently asked questions and important formulas.
 - Encourage and motivate the student.
 - Respond ONLY in ${lang} language for explanations.`,
 
-    quiz: `You are a quiz master for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}.
+      quiz: `You are a quiz master for a ${cls} grade student${ageStr ? `, ${ageStr}` : ''}.
 - Generate quiz questions based on the content provided.
 - Ask ONE question at a time.
 - If the answer is wrong, gently correct and explain why with a simple example.
 - If correct, praise enthusiastically and move on.
 - Keep track mentally and give a final score.
 - Respond ONLY in ${lang} language.`,
-  };
+    };
 
-  return complexityGuide[mode] || complexityGuide.learn;
+    prompt = complexityGuide[mode] || complexityGuide.learn;
+  }
+
+  if (context) {
+    prompt += `\n\n--- STUDY MATERIAL / REFERENCE DOCUMENTS ---\n${context.substring(0, 60000)}\n--- END OF STUDY MATERIAL ---\nAlways refer to and prioritize these study materials when explaining concepts or answering questions.`;
+  }
+
+  return prompt;
 }
 
-export async function sendMessage({ apiKey, messages, newMessage, context, profile }) {
+function formatHistory(messages = []) {
+  const valid = [];
+  for (const m of messages) {
+    if (
+      (m.role === 'user' || m.role === 'model') &&
+      m.content &&
+      typeof m.content === 'string' &&
+      m.id !== 'welcome' &&
+      !m.content.startsWith('❌')
+    ) {
+      valid.push({
+        role: m.role,
+        parts: [{ text: m.content }],
+      });
+    }
+  }
+
+  // Gemini chat history MUST start with role: 'user'
+  const firstUserIdx = valid.findIndex(m => m.role === 'user');
+  if (firstUserIdx === -1) return [];
+
+  const history = [];
+  let expectedRole = 'user';
+
+  for (let i = firstUserIdx; i < valid.length; i++) {
+    const item = valid[i];
+    if (item.role === expectedRole) {
+      history.push(item);
+      expectedRole = expectedRole === 'user' ? 'model' : 'user';
+    }
+  }
+
+  // The upcoming turn is chat.sendMessage(newMessage) which will be a 'user' turn.
+  // Therefore, prior history MUST end with a 'model' turn so that turns strictly alternate.
+  if (history.length > 0 && history[history.length - 1].role === 'user') {
+    history.pop();
+  }
+
+  return history;
+}
+
+export async function sendMessage({ apiKey, messages = [], newMessage, context, profile = {} }) {
   const client = getClient(apiKey);
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = client.getGenerativeModel({ model: GEMINI_MODEL });
 
-  const systemPrompt = buildSystemPrompt(profile);
+  const systemPrompt = buildSystemPrompt(profile, context);
 
-  // Build history for multi-turn chat
-  const history = messages
-    .filter(m => m.role === 'user' || m.role === 'model')
-    .map(m => ({
-      role: m.role,
-      parts: [{ text: m.content }],
-    }));
+  // Build clean history for multi-turn chat ensuring strictly valid turns
+  const history = formatHistory(messages);
 
   const chat = model.startChat({
     history,
     systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
   });
 
-  // Prepend context if available and this is the first message
-  let userMessage = newMessage;
-  if (context && messages.length === 0) {
-    userMessage = `Here is the study material I want to work with:\n\n---\n${context.substring(0, 20000)}\n---\n\n${newMessage}`;
-  }
-
-  const result = await chat.sendMessage(userMessage);
+  const result = await chat.sendMessage(newMessage);
   return result.response.text();
 }
 
 export async function generateQuiz({ apiKey, context, profile }) {
   const client = getClient(apiKey);
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = client.getGenerativeModel({ model: GEMINI_MODEL });
 
   const { studentClass, age, board, explanationLanguage } = profile;
   const lang = explanationLanguage || 'English';
@@ -106,7 +145,7 @@ Respond ONLY in ${lang}.
 
 Study material:
 ---
-${context?.substring(0, 15000) || 'General knowledge'}
+${context?.substring(0, 30000) || 'General knowledge'}
 ---
 
 Return ONLY valid JSON in this exact format:
@@ -148,7 +187,7 @@ Return ONLY valid JSON in this exact format:
 
 export async function generateExamPaper({ apiKey, context, config, profile }) {
   const client = getClient(apiKey);
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = client.getGenerativeModel({ model: GEMINI_MODEL });
 
   const { subjects, difficulty, totalMarks, numMCQ, numShort, numLong, duration, className } = config;
 
@@ -156,7 +195,7 @@ export async function generateExamPaper({ apiKey, context, config, profile }) {
 
 Generate a complete model question paper based on the following content:
 ---
-${context?.substring(0, 20000) || 'General curriculum topics'}
+${context?.substring(0, 40000) || 'General curriculum topics'}
 ---
 
 Exam Configuration:
@@ -185,7 +224,7 @@ Make it exam-ready and professional.`;
 
 export async function explainInLanguage({ apiKey, text, targetLanguage, profile }) {
   const client = getClient(apiKey);
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = client.getGenerativeModel({ model: GEMINI_MODEL });
 
   const prompt = `Translate and explain the following educational content in ${targetLanguage} language.
 Keep subject-specific terms in English where necessary, but explain surrounding context in ${targetLanguage}.

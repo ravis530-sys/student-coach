@@ -53,7 +53,7 @@ const teacherModeCards = [
 ];
 
 export default function HomePage({ onNavigate }) {
-  const { role, name, studentClass, board, teacherSubjects, uploadedContent } = useAppStore();
+  const { role, name, studentClass, board, teacherSubjects, uploadedFiles, uploadedContent } = useAppStore();
 
   const isStudent = role === 'student';
   const modeCards = isStudent ? studentModeCards : teacherModeCards;
@@ -83,11 +83,15 @@ export default function HomePage({ onNavigate }) {
             <span className="badge badge-primary" style={{ fontSize: '0.8rem' }}>
               {isStudent ? '🎓 Student' : '👨‍🏫 Teacher'}
             </span>
-            {uploadedContent && (
+            {uploadedFiles?.length > 1 ? (
+              <span className="badge badge-emerald" style={{ fontSize: '0.8rem', maxWidth: '240px' }} title={uploadedFiles.map(f => f.filename).join(', ')}>
+                📚 {uploadedFiles.length} files attached
+              </span>
+            ) : uploadedContent ? (
               <span className="badge badge-emerald" style={{ fontSize: '0.8rem', maxWidth: '200px' }}>
                 📄 {uploadedContent.filename.slice(0, 25)}{uploadedContent.filename.length > 25 ? '...' : ''}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -96,12 +100,12 @@ export default function HomePage({ onNavigate }) {
       <div className="glass-card" style={{ padding: '20px', marginBottom: '24px' }}>
         <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           📂 Upload Study Material
-          <span className="badge badge-cyan">Optional</span>
+          <span className="badge badge-cyan">Multiple Files Supported</span>
         </div>
         <UploadZone />
         {!uploadedContent && (
           <p className="text-xs text-muted mt-3">
-            Upload a PDF, Word doc, image, or paste a URL. Or skip this and just ask any question!
+            Upload multiple PDFs, Word docs, images, or web links. Or skip this and just ask any question!
           </p>
         )}
       </div>

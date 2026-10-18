@@ -24,9 +24,35 @@ export const ALL_LANGUAGES = [
   'Bengali', 'Marathi', 'Gujarati', 'Punjabi', 'Urdu', 'Odia'
 ];
 
+function aggregateFiles(files) {
+  if (!files || files.length === 0) return null;
+  if (files.length === 1) {
+    return {
+      ...files[0],
+      files,
+      shortLabel: files[0].filename,
+    };
+  }
+
+  const combinedText = files
+    .map((f, idx) => `=== [DOCUMENT ${idx + 1}: ${f.filename}] ===\n${f.text || ''}\n=== [END OF DOCUMENT: ${f.filename}] ===`)
+    .join('\n\n');
+
+  const totalPages = files.reduce((sum, f) => sum + (f.pageCount || 0), 0);
+
+  return {
+    filename: `${files.length} files (${files.map(f => f.filename).join(', ')})`,
+    shortLabel: `${files.length} documents`,
+    text: combinedText,
+    type: 'multiple',
+    pageCount: totalPages || undefined,
+    files,
+  };
+}
+
 const useAppStore = create(
   persist(
-    (set, get) => ({
+    (set) => ({
       // Settings
       apiKey: '',
       setApiKey: (key) => set({ apiKey: key }),
@@ -45,7 +71,7 @@ const useAppStore = create(
       resetProfile: () => set({
         role: null, name: '', age: '', studentClass: '', board: '',
         teacherSubjects: [], onboardingComplete: false,
-        currentMode: null, uploadedContent: null, messages: [],
+        currentMode: null, uploadedFiles: [], uploadedContent: null, messages: [],
         quizState: null,
       }),
 
@@ -53,10 +79,44 @@ const useAppStore = create(
       currentMode: null,
       setMode: (mode) => set({ currentMode: mode, messages: [], quizState: null }),
 
-      // Uploaded content
-      uploadedContent: null,     // { text, filename, type }
-      setUploadedContent: (content) => set({ uploadedContent: content }),
-      clearContent: () => set({ uploadedContent: null }),
+      // Uploaded files & aggregated content
+      uploadedFiles: [],
+      uploadedContent: null, // { text, filename, type, files, shortLabel }
+      setUploadedFiles: (files) => set({
+        uploadedFiles: files || [],
+        uploadedContent: aggregateFiles(files || []),
+      }),
+      addUploadedFiles: (newFiles) => set((state) => {
+        const incoming = Array.isArray(newFiles) ? newFiles : [newFiles];
+        const existingNames = new Set((state.uploadedFiles || []).map(f => f.filename));
+        const filtered = incoming.filter(f => !existingNames.has(f.filename));
+        const updated = [...(state.uploadedFiles || []), ...filtered];
+        return {
+          uploadedFiles: updated,
+          uploadedContent: aggregateFiles(updated),
+        };
+      }),
+      removeUploadedFile: (idOrFilename) => set((state) => {
+        const updated = (state.uploadedFiles || []).filter(
+          f => f.id !== idOrFilename && f.filename !== idOrFilename
+        );
+        return {
+          uploadedFiles: updated,
+          uploadedContent: aggregateFiles(updated),
+        };
+      }),
+      setUploadedContent: (content) => {
+        if (!content) {
+          set({ uploadedFiles: [], uploadedContent: null });
+        } else {
+          const files = content.files || (Array.isArray(content) ? content : [content]);
+          set({
+            uploadedFiles: files,
+            uploadedContent: aggregateFiles(files),
+          });
+        }
+      },
+      clearContent: () => set({ uploadedFiles: [], uploadedContent: null }),
 
       // Chat messages
       messages: [],
